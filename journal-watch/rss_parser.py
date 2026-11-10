@@ -146,6 +146,29 @@ def main():
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Small companion snapshot avoids loading all historical RSS entries into an LLM.
+    cutoff = (now - dt.timedelta(days=90)).isoformat()
+    compact_feeds = []
+    for feed in feeds:
+        recent = []
+        for item in feed.get("items", []):
+            if item["feed_date"] is None or item["feed_date"] >= cutoff:
+                recent.append({k: item.get(k) for k in ("title", "link", "doi", "feed_date")})
+        compact_feeds.append({
+            "journal": feed["journal"], "status": feed["status"],
+            "checked_utc": feed["checked_utc"], "latest_feed_date": feed.get("latest_feed_date"),
+            "possibly_stale": feed.get("possibly_stale", True),
+            "total_feed_items": feed.get("items_count", 0),
+            "items": recent[:40], "filtered_or_capped": len(recent) > 40,
+            "error": feed.get("error")
+        })
+    compact = {
+        "schema_version": 1, "generated_utc": snapshot["generated_utc"],
+        "status": snapshot["status"], "ok_feeds": good, "total_feeds": len(FEEDS),
+        "note": snapshot["note"], "feeds": compact_feeds,
+    }
+    compact_path = OUTPUT.parent / "latest_compact.json"
+    compact_path.write_text(json.dumps(compact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("RESULT:", snapshot["status"], good, "/", len(FEEDS))
     return 0 if good else 2
 
