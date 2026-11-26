@@ -1,12 +1,21 @@
-from paper import ArxivPaper
+from __future__ import annotations
+
 import math
-from tqdm import tqdm
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import parseaddr, formataddr
 import smtplib
 import datetime
-from loguru import logger
+import logging
+import ssl
+import time
+from contextlib import suppress
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from paper import ArxivPaper
+
+logger = logging.getLogger(__name__)
 
 framework = """
 <!DOCTYPE HTML>
@@ -117,6 +126,8 @@ def get_stars(score:float):
 
 
 def render_email(papers:list[ArxivPaper]):
+    from tqdm import tqdm
+
     parts = []
     if len(papers) == 0 :
         return framework.replace('__CONTENT__', get_empty_html())
@@ -139,6 +150,30 @@ def render_email(papers:list[ArxivPaper]):
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
     return framework.replace('__CONTENT__', content)
 
+def connect_smtp(sender: str, password: str, smtp_server: str, smtp_port: int) -> smtplib.SMTP:
+    context = ssl.create_default_context()
+    for attempt in range(3):
+        server = None
+        try:
+            if smtp_port in (465, 2465):
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=20, context=context)
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port, timeout=20)
+                server.starttls(context=context)
+            server.login(sender, password, initial_response_ok=False)
+            return server
+        except (smtplib.SMTPException, OSError) as error:
+            if server is not None:
+                server.close()
+            retryable = isinstance(error, (smtplib.SMTPServerDisconnected, TimeoutError, ConnectionError))
+            if isinstance(error, smtplib.SMTPResponseException):
+                retryable = 400 <= error.smtp_code < 500
+            if not retryable or attempt == 2:
+                raise
+            logger.warning("SMTP connection or login failed (%s), retrying", type(error).__name__)
+            time.sleep(2 ** (attempt + 1))
+
+
 def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:int, html:str,):
     def _format_addr(s):
         name, addr = parseaddr(s)
@@ -150,14 +185,10 @@ def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:
     today = datetime.datetime.now().strftime('%Y/%m/%d')
     msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
 
+    server = connect_smtp(sender, password, smtp_server, smtp_port)
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-    except Exception as e:
-        logger.warning(f"Failed to use TLS. {e}")
-        logger.warning(f"Try to use SSL.")
-        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-
-    server.login(sender, password)
-    server.sendmail(sender, [receiver], msg.as_string())
-    server.quit()
+        server.sendmail(sender, [receiver], msg.as_string())
+    finally:
+        with suppress(smtplib.SMTPException, OSError):
+            server.quit()
+        server.close()
