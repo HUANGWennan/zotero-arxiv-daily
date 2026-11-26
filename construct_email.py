@@ -151,6 +151,12 @@ def render_email(papers:list[ArxivPaper]):
     return framework.replace('__CONTENT__', content)
 
 def connect_smtp(sender: str, password: str, smtp_server: str, smtp_port: int) -> smtplib.SMTP:
+    if smtp_server.casefold() == "smtp.gmail.com":
+        sender = sender.strip()
+        compact_password = "".join(password.split())
+        if len(compact_password) == 16 and compact_password.isascii() and compact_password.isalpha():
+            password = compact_password
+
     context = ssl.create_default_context()
     try_login_challenge = False
     for attempt in range(3):
