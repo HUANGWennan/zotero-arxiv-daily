@@ -1,6 +1,11 @@
 name: Send emails daily
 on:
   workflow_dispatch:
+    inputs:
+      smtp_check_only:
+        description: Verify SMTP login without sending an email
+        type: boolean
+        default: true
   schedule:
     - cron: '0 22 * * *'
 
@@ -14,12 +19,39 @@ jobs:
           repository: ${{ vars.REPOSITORY }}
           ref: ${{ vars.REF }}
 
+      - name: Verify SMTP login
+        if: ${{ inputs.smtp_check_only == true }}
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SENDER: ${{ secrets.SENDER }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from contextlib import closing
+          from construct_email import connect_smtp
+
+          settings = {name: os.environ.get(name) for name in (
+              "SMTP_SERVER", "SMTP_PORT", "SENDER", "SENDER_PASSWORD",
+          )}
+          if missing := [name for name, value in settings.items() if not value]:
+              raise SystemExit(f"Missing SMTP settings: {', '.join(missing)}")
+          with closing(connect_smtp(
+              settings["SENDER"], settings["SENDER_PASSWORD"],
+              settings["SMTP_SERVER"], int(settings["SMTP_PORT"]),
+          )):
+              print("SMTP authentication succeeded")
+          PY
+
       - name: Setup uv
+        if: ${{ inputs.smtp_check_only != true }}
         uses: astral-sh/setup-uv@v3
         with:
           version: '0.5.4'
 
       - name: Run script
+        if: ${{ inputs.smtp_check_only != true }}
         env:
           ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
           ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
