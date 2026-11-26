@@ -152,6 +152,7 @@ def render_email(papers:list[ArxivPaper]):
 
 def connect_smtp(sender: str, password: str, smtp_server: str, smtp_port: int) -> smtplib.SMTP:
     context = ssl.create_default_context()
+    try_login_challenge = False
     for attempt in range(3):
         server = None
         try:
@@ -160,7 +161,17 @@ def connect_smtp(sender: str, password: str, smtp_server: str, smtp_port: int) -
             else:
                 server = smtplib.SMTP(smtp_server, smtp_port, timeout=20)
                 server.starttls(context=context)
-            server.login(sender, password, initial_response_ok=False)
+            server.ehlo_or_helo_if_needed()
+            mechanisms = server.esmtp_features.get("auth", "").upper().split()
+            if try_login_challenge and "LOGIN" in mechanisms:
+                server.user, server.password = sender, password
+                server.auth("LOGIN", server.auth_login, initial_response_ok=False)
+            else:
+                try:
+                    server.login(sender, password, initial_response_ok=False)
+                except smtplib.SMTPServerDisconnected:
+                    try_login_challenge = "LOGIN" in mechanisms
+                    raise
             return server
         except (smtplib.SMTPException, OSError) as error:
             if server is not None:
