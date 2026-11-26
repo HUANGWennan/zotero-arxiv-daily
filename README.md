@@ -1,3 +1,8 @@
+[中文](#chinese) · [English](#english)
+
+<a name="english"></a>
+## English
+
 <p align="center">
   <a href="" rel="noopener">
  <img width=200px height=200px src="assets/logo.svg" alt="logo"></a>
@@ -139,3 +144,35 @@ If you find this project helpful, welcome to sponsor me via WeChat or via [ko-fi
 ## 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=TideDra/zotero-arxiv-daily&type=Date)](https://star-history.com/#TideDra/zotero-arxiv-daily&Date)
+
+---
+
+<a name="chinese"></a>
+## 中文
+
+根据你的 Zotero 文献库推荐每日 arXiv 新论文并通过邮件发送。列表按相关性排序，包含简短 AI 摘要、可解析的作者机构、PDF 链接及可用的代码链接。可用类 gitignore 规则排除不相关的 Zotero 分类。项目可在 GitHub Actions 或本机运行，云端模型 API 为可选项。
+
+### GitHub Actions 部署
+
+1. Fork 此仓库，进入 **Settings → Secrets and variables → Actions**。在 **Secrets** 填写下表所需参数；不要把密钥或邮箱密码提交到仓库。
+2. 在 **Actions** 手动运行 **Test-Workflow**，检查日志和收件箱。测试工作流固定提取 5 篇。主流程每日默认 UTC 22:00 运行，查前一天新发布的论文，可通过 [工作流](.github/workflows/main.yml) 调整。周末及假期可能没有新论文。
+3. 可订阅上游更新。有需要时同步 fork。以 `REPOSITORY=TideDra/zotero-arxiv-daily` 运行上游代码时，可用 `REF=main` 或 `REF=dev` 指定分支；工作流文件本身的改动仍需同步。
+
+| 参数 | 是否必填 | 用途 |
+| --- | --- | --- |
+| `ZOTERO_ID` | 是 | Zotero **数字**用户 ID，不是用户名 |
+| `ZOTERO_KEY` | 是 | 对应文献库的只读 API 密钥；在 [Zotero 安全设置](https://www.zotero.org/settings/security) 创建 |
+| `ARXIV_QUERY` | 是 | [arXiv 学科代码](https://arxiv.org/category_taxonomy)，用 `+` 拼接，例如 `cs.AI+cs.LG` |
+| `SMTP_SERVER`、`SMTP_PORT` | 是 | 邮箱服务商的 SMTP 地址和端口 |
+| `SENDER`、`SENDER_PASSWORD`、`RECEIVER` | 是 | 发件地址、SMTP 验证凭据（如应用专用密码）、收件地址 |
+| `MAX_PAPER_NUM`、`SEND_EMPTY` | 否 | 邮件论文数上限（`-1` 不限制）、没有论文是否也发邮件 |
+| `USE_LLM_API`、`OPENAI_API_KEY`、`OPENAI_API_BASE`、`MODEL_NAME` | 否 | 是否改用云端 API，以及相应密钥、地址和模型；默认使用本地模型 |
+| `ZOTERO_IGNORE` | 否 | 要忽略的 Zotero 分类；每行一条 gitignore 风格规则，设为 Repository Variable |
+
+### 本地运行、原理与限制
+
+安装 [uv](https://github.com/astral-sh/uv)，通过环境变量配置相同参数，在仓库根目录运行 `uv run main.py`。默认本地摘要模型约 3 GB，请预留磁盘、网络和运行时间；其他包管理器未经过同等测试。
+
+相关性根据摘要的向量相似度计算，较晚加入 Zotero 的文献权重更高。摘要模型使用标题、摘要以及可提取的引言和结论。排序是启发式结果，不保证完全符合兴趣；CPU 上为每篇文章生成摘要可能较慢。可降低 `MAX_PAPER_NUM`，或使用自己的 runner / 主机，避免触及 GitHub Actions 的运行限制。
+
+贡献代码时按上游约定以 `dev` 为目标分支。项目采用 [AGPLv3](LICENSE)。上游演示截图、依赖致谢和赞助入口保留于英文原文。
